@@ -9,7 +9,7 @@ def setup_training():
     ROBOFLOW_API_KEY = "mAqOEuX2rkRv1WBe1KtU"
     WORKSPACE = "sergio-sxcoh"
     PROJECT = "logos-gep6x"
-    VERSION = 1
+    VERSION = 3
 
     rf = Roboflow(api_key=ROBOFLOW_API_KEY)
     project = rf.workspace(WORKSPACE).project(PROJECT)
@@ -20,7 +20,7 @@ def setup_training():
 def train_model(data_yaml_path):
     """Entrena el modelo YOLOv8 con los parámetros optimizados"""
     # Cargar el modelo base
-    model = YOLO('yolov8n.pt')  # 'n' es el más pequeño y rápido, puedes usar 's' o 'm' para más precisión
+    model = YOLO('yolov8m.pt')  # 'n' es el más pequeño y rápido, puedes usar 's' o 'm' para más precisión
     
     # Configurar parámetros de entrenamiento
     results = model.train(
