@@ -78,6 +78,7 @@ coverage.xml
 
 # Dataset files
 dataset/
+datasetv2/
 data/
 *.csv
 *.json
@@ -89,3 +90,8 @@ data/
 *.hdf5
 *.pkl
 *.pickle
+
+# Modelos entrenados
+modelos_entrenados/
+*.pt
+*.onnx

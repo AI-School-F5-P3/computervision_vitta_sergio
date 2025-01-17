@@ -10,10 +10,10 @@ imgsz: 640
 save: true
 save_period: -1
 cache: false
-device: cpu
+device: 0
 workers: 8
 project: null
-name: train2
+name: train6
 exist_ok: false
 pretrained: true
 optimizer: Adam
@@ -103,4 +103,4 @@ erasing: 0.4
 crop_fraction: 1.0
 cfg: null
 tracker: botsort.yaml
-save_dir: c:\Users\vitta\Desktop\F5_Bootcamp\computervision_vitta_sergio\runs\detect\train2
+save_dir: c:\Users\vitta\Desktop\F5_Bootcamp\computervision_vitta_sergio\runs\detect\train6

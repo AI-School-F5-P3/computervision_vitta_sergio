@@ -55,6 +55,13 @@ class EntrenamientoCallback:
 
 def entrenar_modelo(epochs=150):
     print("Usando dataset local...")
+    # Verificar GPU y forzar su uso
+    if not torch.cuda.is_available():
+        raise RuntimeError("Este script requiere una GPU con CUDA para funcionar")
+    
+    device = 0  # Forzar uso de GPU
+    print(f"Usando GPU: {torch.cuda.get_device_name(device)}")
+    
     # Construir ruta al dataset local
     ruta_base = Path(__file__).parent
     ruta_dataset = ruta_base / 'dataset' / 'logos'
@@ -63,15 +70,6 @@ def entrenar_modelo(epochs=150):
     print(f"Dataset ubicado en: {ruta_dataset}")
     print(f"Archivo de configuración: {ruta_yaml}")
     
-    # Verificar CUDA
-    if torch.cuda.is_available():
-        print(f"GPU detectada: {torch.cuda.get_device_name(0)}")
-        print(f"Versión CUDA: {torch.version.cuda}")
-        device = 0  # Usar primera GPU
-    else:
-        print("ADVERTENCIA: No se detectó GPU. El entrenamiento será muy lento en CPU.")
-        print("Considera instalar CUDA y PyTorch con soporte CUDA")
-        device = 'cpu'
     
     # Verificar que existe el dataset
     if not ruta_dataset.exists():
@@ -98,7 +96,7 @@ def entrenar_modelo(epochs=150):
             warmup_epochs=3,
             cos_lr=True,
             close_mosaic=10,
-            device=device,  # Especificar dispositivo
+            device=device,  # Usar GPU
             augment=True
         )
         
@@ -110,8 +108,28 @@ def entrenar_modelo(epochs=150):
         print("\nGuardando resultados...")
         fecha_actual = datetime.now().strftime("%Y%m%d_%H%M%S")
         
+        # Crear directorio para guardar los resultados si no existe
+        directorio_resultados = Path('modelos_entrenados')
+        directorio_resultados.mkdir(exist_ok=True)
+        
+        # Guardar el modelo
+        nombre_modelo = f'modelo_logos_{fecha_actual}.pt'
+        ruta_guardado = directorio_resultados / nombre_modelo
+        modelo.model.save(str(ruta_guardado))
+        print(f"\nModelo guardado en: {ruta_guardado}")
+        
         # Exportar modelo en diferentes formatos
-        modelo.export(format='onnx', filename=f'modelo_logos_{fecha_actual}.onnx')
+        print("\nExportando modelo...")
+        try:
+            modelo.export(
+                format='onnx',
+                imgsz=640,
+                opset=12  # Versión de ONNX
+            )
+            print("Modelo exportado exitosamente")
+        except Exception as e:
+            print(f"Error al exportar el modelo: {e}")
+            print("El modelo entrenado sigue disponible en formato .pt")
         
         # Guardar métricas
         with open(f'metricas_{fecha_actual}.txt', 'w') as f:
