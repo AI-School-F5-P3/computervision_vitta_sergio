@@ -12,9 +12,9 @@ import psutil
 load_dotenv()
 
 def kill_process_on_port(port):
-    for proc in psutil.process_iter(['pid', 'name', 'connections']):
+    for proc in psutil.process_iter(['pid', 'name', 'net_connections']):
         try:
-            for conn in proc.connections():
+            for conn in proc.net_connections():
                 if conn.laddr.port == port:
                     os.kill(proc.pid, signal.SIGTERM)
                     time.sleep(1)
@@ -32,7 +32,7 @@ def main():
     
     # Definir comandos
     api_command = [sys.executable, "-m", "uvicorn", "app.api.routes:app", "--host", "0.0.0.0", "--port", "8000"]
-    streamlit_command = [sys.executable, "-m", "streamlit", "run", "frontend/streamlit_app.py"]
+    streamlit_command = [sys.executable,"-m", "streamlit", "run", "frontend/streamlit_app.py"]
     
     try:
         # Iniciar API
