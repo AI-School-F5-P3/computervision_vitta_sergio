@@ -75,3 +75,17 @@ coverage.xml
 *.log
 *.sqlite
 *.db
+
+# Dataset files
+dataset/
+data/
+*.csv
+*.json
+*.xlsx
+*.xls
+*.parquet
+*.feather
+*.h5
+*.hdf5
+*.pkl
+*.pickle

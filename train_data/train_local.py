@@ -8,6 +8,16 @@ import time
 from datetime import datetime, timedelta
 from roboflow import Roboflow
 
+def verificar_gpu():
+    print("\n=== Información del Sistema ===")
+    print(f"PyTorch versión: {torch.__version__}")
+    print(f"CUDA disponible: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"CUDA versión: {torch.version.cuda}")
+        print(f"GPU detectada: {torch.cuda.get_device_name(0)}")
+        print(f"Número de GPUs: {torch.cuda.device_count()}")
+    print("===========================\n")
+
 def obtener_dataset_roboflow(api_key, workspace, project_name, version):
     """Descarga el dataset desde Roboflow"""
     rf = Roboflow(api_key=api_key)
@@ -43,47 +53,53 @@ class EntrenamientoCallback:
         print(f"Tiempo restante estimado: {tiempo_restante}")
         print(f"Mejor mAP hasta ahora: {self.mejor_map:.4f}")
 
-def entrenar_modelo(api_key, workspace, project_name, version, epochs=150):
-    print("Descargando dataset desde Roboflow...")
-    ruta_dataset = obtener_dataset_roboflow(api_key, workspace, project_name, version)
-    print(f"Dataset descargado en: {ruta_dataset}")
+def entrenar_modelo(epochs=150):
+    print("Usando dataset local...")
+    # Construir ruta al dataset local
+    ruta_base = Path(__file__).parent
+    ruta_dataset = ruta_base / 'dataset' / 'logos'
+    ruta_yaml = ruta_dataset / 'data.yaml'
+    
+    print(f"Dataset ubicado en: {ruta_dataset}")
+    print(f"Archivo de configuración: {ruta_yaml}")
+    
+    # Verificar CUDA
+    if torch.cuda.is_available():
+        print(f"GPU detectada: {torch.cuda.get_device_name(0)}")
+        print(f"Versión CUDA: {torch.version.cuda}")
+        device = 0  # Usar primera GPU
+    else:
+        print("ADVERTENCIA: No se detectó GPU. El entrenamiento será muy lento en CPU.")
+        print("Considera instalar CUDA y PyTorch con soporte CUDA")
+        device = 'cpu'
+    
+    # Verificar que existe el dataset
+    if not ruta_dataset.exists():
+        raise FileNotFoundError(f"No se encontró el dataset en {ruta_dataset}")
+    if not ruta_yaml.exists():
+        raise FileNotFoundError(f"No se encontró el archivo data.yaml en {ruta_yaml}")
     
     # Inicializar modelo
     modelo = YOLO('yolov8n.pt')
     
-    # Configurar parámetros optimizados para logos
-    hiperparametros = {
-        'epochs': epochs,
-        'batch': 16,
-        'imgsz': 640,
-        'patience': 30,
-        'optimizer': 'Adam',
-        'lr0': 0.001,
-        'lrf': 0.01,
-        'momentum': 0.937,
-        'weight_decay': 0.0005,
-        'warmup_epochs': 3,
-        'cos_lr': True,
-        'close_mosaic': 10,
-        'label_smoothing': 0.1,
-        'device': '0' if torch.cuda.is_available() else 'cpu',
-        'augment': True,
-    }
-    
-    # Crear callback personalizado
-    callback = EntrenamientoCallback(epochs)
-    
-    # Entrenar modelo
-    print("Iniciando entrenamiento...")
-    print(f"Dispositivo utilizado: {hiperparametros['device']}")
-    print(f"Épocas totales: {epochs}")
-    
     try:
-        # Usar el archivo data.yaml generado por Roboflow
+        # Entrenar modelo con los parámetros directamente
         resultados = modelo.train(
-            data=os.path.join(ruta_dataset, 'data.yaml'),
-            callbacks=[callback],
-            **hiperparametros
+            data=str(ruta_yaml),
+            epochs=epochs,
+            batch=16,  # Aumentar si hay suficiente memoria GPU
+            imgsz=640,
+            patience=30,
+            optimizer='Adam',
+            lr0=0.001,
+            lrf=0.01,
+            momentum=0.937,
+            weight_decay=0.0005,
+            warmup_epochs=3,
+            cos_lr=True,
+            close_mosaic=10,
+            device=device,  # Especificar dispositivo
+            augment=True
         )
         
         # Evaluar modelo
@@ -114,24 +130,7 @@ def entrenar_modelo(api_key, workspace, project_name, version, epochs=150):
         raise
 
 if __name__ == "__main__":
-    # Configuración de Roboflow
-    ROBOFLOW_API_KEY = "TU_API_KEY"  # Reemplaza con tu API key
-    WORKSPACE = "TU_WORKSPACE"        # Reemplaza con tu workspace
-    PROJECT_NAME = "TU_PROYECTO"      # Reemplaza con el nombre de tu proyecto
-    VERSION = 1                       # Reemplaza con el número de versión
-    
+    verificar_gpu()
     print("=== Iniciando programa de entrenamiento de detección de logos ===")
-    print(f"Proyecto Roboflow: {PROJECT_NAME}")
-    print(f"Versión: {VERSION}")
     
-    if torch.cuda.is_available():
-        print(f"GPU detectada: {torch.cuda.get_device_name(0)}")
-    else:
-        print("No se detectó GPU. El entrenamiento será más lento en CPU.")
-    
-    entrenar_modelo(
-        api_key=ROBOFLOW_API_KEY,
-        workspace=WORKSPACE,
-        project_name=PROJECT_NAME,
-        version=VERSION
-    )
+    entrenar_modelo(epochs=150)

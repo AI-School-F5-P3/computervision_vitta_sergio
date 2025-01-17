@@ -1,0 +1,12 @@
+names:
+- adidas
+- apple
+- ericsson
+- nike
+- reebok
+- samsung
+- sony
+path: train_data/dataset/logos
+test: ./test/images
+train: ./train/images
+val: ./valid/images
