@@ -1,0 +1,12 @@
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics
+opencv-python-headless
+python-dotenv
+sqlalchemy
+psycopg2-binary
+fastapi
+uvicorn
+streamlit
+pytube
+python-multipart
