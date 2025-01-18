@@ -112,6 +112,10 @@ def train_model(epochs=150):
     callback = TrainCallback(epochs)
     
     try:
+        # Register callback
+        model.add_callback("on_train_epoch_start", callback.on_train_epoch_start)
+        model.add_callback("on_train_epoch_end", callback.on_train_epoch_end)
+        
         # Train model with parameters
         results = model.train(
             data=str(yaml_path),
@@ -129,7 +133,6 @@ def train_model(epochs=150):
             close_mosaic=10,
             device=device,
             augment=True,
-            callbacks=[callback],
             amp=True
         )
         
