@@ -1,4 +1,5 @@
 import streamlit as st
+
 # Configuración de la página debe ser lo primero
 st.set_page_config(
     page_title="Detector de Logos",
@@ -18,6 +19,10 @@ from ultralytics import YOLO
 import time
 import base64
 import os
+from db_handler import DatabaseHandler
+
+db_handler = DatabaseHandler()
+db_handler.create_tables()
 
 # Debug info
 if st.sidebar.checkbox("Debug Info"):
@@ -56,18 +61,19 @@ def load_sample_images():
 # Función para cargar el modelo
 @st.cache_resource
 def load_model():
-    model = YOLO('../train_data/trained_models/logo_model_v1_20250118_140314.pt')
+    model = YOLO('best.pt')
     return model
 
 # Cargar el modelo
 model = load_model()
 
 # Función para procesar imagen
-def process_image(image):
+def process_image(image, file_name=None, source_type='upload', url=None):
     results = model(image, conf=0.25)
-    
-    # Obtenemos las predicciones
     boxes = results[0].boxes
+    
+    # Preparar datos para la base de datos
+    detections = []
     
     # Mostramos información sobre las detecciones
     if len(boxes) > 0:
@@ -77,55 +83,76 @@ def process_image(image):
             cls = int(box.cls[0])
             class_name = model.names[cls]
             st.write(f"- {class_name} (confianza: {conf:.2%})")
+            detections.append({
+                'name': class_name,
+                'confidence': conf
+            })
     
-    # Retornamos la imagen con todas las detecciones dibujadas
+    # Guardar en la base de datos
+    db_name = file_name if file_name else url if url else "unknown"
+    db_handler.save_detection(
+        file_name=db_name,
+        file_type='image',
+        source_type=source_type,
+        detections=detections
+    )
+    
     return results[0].plot()
 
-# Función para procesar video
 def process_video(video_file, conf_threshold=0.25, speed_options=None, selected_speed=None, detection_area=None):
     def process_video_frames():
         tfile = tempfile.NamedTemporaryFile(delete=False)
         tfile.write(video_file.read())
         cap = cv2.VideoCapture(tfile.name)
         
-        # Usar el área central para la visualización
         video_display = st.empty()
+        all_detections = []  # Para almacenar todas las detecciones
         
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
             
-            # Procesar frame y mostrar detecciones
             results = model(frame, conf=conf_threshold)
             boxes = results[0].boxes
             
-            # Actualizar información de detecciones en el panel derecho
-            detections_info = []
+            frame_detections = []
             for box in boxes:
                 conf = float(box.conf[0])
                 cls = int(box.cls[0])
                 class_name = model.names[cls]
-                detections_info.append(f"{class_name} ({conf:.2%})")
+                frame_detections.append({
+                    'name': class_name,
+                    'confidence': conf
+                })
+                
+            all_detections.extend(frame_detections)
             
+            # Actualizar información de detecciones en el panel
+            detections_info = [f"{d['name']} ({d['confidence']:.2%})" for d in frame_detections]
             if detections_info and detection_area is not None:
                 detection_area.write("\n".join(detections_info))
             elif detection_area is not None:
                 detection_area.write("No se detectaron logos")
                 
-            # Mostrar frame con detecciones
             frame_with_detections = results[0].plot()
             frame_with_detections_rgb = cv2.cvtColor(frame_with_detections, cv2.COLOR_BGR2RGB)
             video_display.image(frame_with_detections_rgb, use_container_width=True)
             
-            # Controlar la velocidad de reproducción
             if speed_options and selected_speed:
                 speed = speed_options[selected_speed]
                 time.sleep(1/speed)
         
+        # Guardar en la base de datos al finalizar el video
+        db_handler.save_detection(
+            file_name=video_file.name if hasattr(video_file, 'name') else "unknown_video",
+            file_type='video',
+            source_type='upload',
+            detections=all_detections
+        )
+        
         cap.release()
     
-    # Control de reproducción
     if 'video_processed' not in st.session_state:
         st.session_state.video_processed = False
     
@@ -133,18 +160,18 @@ def process_video(video_file, conf_threshold=0.25, speed_options=None, selected_
         process_video_frames()
         st.session_state.video_processed = True
     
-    # Botón para volver a procesar
     if st.button("Procesar video de nuevo"):
         st.session_state.video_processed = False
         process_video_frames()
 
-# Función para procesar video de YouTube
 def process_youtube_video(url):
     video = pafy.new(url)
     best = video.getbest(preftype="mp4")
     cap = cv2.VideoCapture(best.url)
     stframe = st.empty()
     info_text = st.empty()
+    
+    all_detections = []  # Para almacenar todas las detecciones
     
     while cap.isOpened():
         ret, frame = cap.read()
@@ -154,14 +181,19 @@ def process_youtube_video(url):
         results = model(frame, conf=0.25)
         boxes = results[0].boxes
         
-        # Actualizar información de detecciones
-        detections_info = []
+        frame_detections = []
         for box in boxes:
             conf = float(box.conf[0])
             cls = int(box.cls[0])
             class_name = model.names[cls]
-            detections_info.append(f"{class_name} ({conf:.2%})")
+            frame_detections.append({
+                'name': class_name,
+                'confidence': conf
+            })
         
+        all_detections.extend(frame_detections)
+        
+        detections_info = [f"{d['name']} ({d['confidence']:.2%})" for d in frame_detections]
         if detections_info:
             info_text.write(f"Logos detectados: {', '.join(detections_info)}")
         else:
@@ -170,17 +202,25 @@ def process_youtube_video(url):
         frame_rgb = cv2.cvtColor(results[0].plot(), cv2.COLOR_BGR2RGB)
         stframe.image(frame_rgb)
     
+    # Guardar en la base de datos al finalizar
+    db_handler.save_detection(
+        file_name=url,
+        file_type='video',
+        source_type='youtube',
+        detections=all_detections
+    )
+    
     cap.release()
 
-# Función para procesar webcam
 def process_webcam():
     cap = cv2.VideoCapture(0)
     stframe = st.empty()
     info_text = st.empty()
     
-    # Botón de parada con key única
     stop_button_placeholder = st.empty()
     stop = stop_button_placeholder.button('Detener Webcam', key='stop_webcam_button')
+    
+    all_detections = []  # Para almacenar todas las detecciones
     
     while cap.isOpened() and not stop:
         ret, frame = cap.read()
@@ -190,14 +230,19 @@ def process_webcam():
         results = model(frame, conf=0.25)
         boxes = results[0].boxes
         
-        # Actualizar información de detecciones
-        detections_info = []
+        frame_detections = []
         for box in boxes:
             conf = float(box.conf[0])
             cls = int(box.cls[0])
             class_name = model.names[cls]
-            detections_info.append(f"{class_name} ({conf:.2%})")
+            frame_detections.append({
+                'name': class_name,
+                'confidence': conf
+            })
         
+        all_detections.extend(frame_detections)
+        
+        detections_info = [f"{d['name']} ({d['confidence']:.2%})" for d in frame_detections]
         if detections_info:
             info_text.write(f"Logos detectados: {', '.join(detections_info)}")
         else:
@@ -206,16 +251,24 @@ def process_webcam():
         frame_rgb = cv2.cvtColor(results[0].plot(), cv2.COLOR_BGR2RGB)
         stframe.image(frame_rgb, use_container_width=True)
         
-        # Actualizar el botón de parada con key única
         stop = stop_button_placeholder.button('Detener Webcam', key=f'stop_webcam_button_{time.time()}')
         
         if stop or not st.session_state.run_webcam:
             break
     
+    # Guardar en la base de datos al finalizar
+    if all_detections:
+        db_handler.save_detection(
+            file_name="webcam_capture",
+            file_type='video',
+            source_type='webcam',
+            detections=all_detections
+        )
+    
     cap.release()
-    st.session_state.run_webcam = False  # Resetear el estado cuando se detiene
-    stframe.empty()  # Limpiar el frame
-    info_text.empty()  # Limpiar el texto de información
+    st.session_state.run_webcam = False
+    stframe.empty()
+    info_text.empty()
 
 # Función para codificar la imagen en base64
 def get_base64_of_bin_file(bin_file):
@@ -229,7 +282,7 @@ def get_img_with_href(local_img_path):
     return bin_str
 
 # Ruta a la imagen de fondo
-background_image_path = "./src/internet-3116062_1280.webp"
+background_image_path = "./app/src/internet-3116062_1280.webp"
 background_image = get_img_with_href(background_image_path)
 
 # CSS personalizado para el fondo
@@ -362,11 +415,11 @@ with left_column:
                         'Velocidad x5': 5.0
                     }
                     
-                    selected_speed = st.selectbox(
+                    selected_speed1 = st.selectbox(
                         'Velocidad de reproducción',
                         options=list(speed_options.keys()),
                         index=0,
-                        key='speed_selector'
+                        key='speed_selector_1'
                     )
                     
                     # Área para mostrar detecciones y video
@@ -406,7 +459,7 @@ with left_column:
                             video_display.image(frame_with_detections_rgb, use_container_width=True)
                             
                             # Controlar la velocidad de reproducción
-                            speed = speed_options[selected_speed]
+                            speed = speed_options[selected_speed1]
                             time.sleep(1/speed)
                             
                     except Exception as e:
@@ -456,22 +509,23 @@ with center_column:
                 'Velocidad x3': 3.0,
                 'Velocidad x5': 5.0
             }
-            selected_speed = st.selectbox(
+            selected_speed2 = st.selectbox(
                 'Velocidad de reproducción',
                 options=list(speed_options.keys()),
-                index=0
+                index=0,
+                key='speed_selector_2'
             )
             
             # Obtener el umbral de confianza del slider
-            confidence = st.slider("Confidence Threshold:", 0, 100, 50, format="%d%%")
-            conf_threshold = confidence / 100
+            confidence1 = st.slider("Confidence Threshold:", 0, 100, 50, format="%d%%", key="confidence_slider_1")
+            conf_threshold1 = confidence1 / 100
             
             # Procesar el video con los parámetros
             process_video(
                 uploaded_file, 
-                conf_threshold=conf_threshold,
+                conf_threshold=conf_threshold1,
                 speed_options=speed_options,
-                selected_speed=selected_speed,
+                selected_speed=selected_speed2,
                 detection_area=detection_area
             )
     elif url_input:
@@ -494,11 +548,11 @@ with right_column:
     st.subheader("Configuración")
     
     # Control de confianza
-    confidence = st.slider("Confidence Threshold:", 0, 100, 50, format="%d%%")
-    conf_threshold = confidence / 100
+    confidence2 = st.slider("Confidence Threshold:", 0, 100, 50, format="%d%%", key="confidence_slider_2")
+    conf_threshold2 = confidence2 / 100
     
     # Control de superposición
-    overlap = st.slider("Overlap Threshold:", 0, 100, 50, format="%d%%")
+    overlap = st.slider("Overlap Threshold:", 0, 100, 50, format="%d%%", key="overlap_slider")
     
     # Modo de visualización
     display_mode = st.selectbox(
@@ -514,10 +568,11 @@ with right_column:
             'Velocidad x3': 3.0,
             'Velocidad x5': 5.0
         }
-        selected_speed = st.selectbox(
+        selected_speed3 = st.selectbox(
             'Velocidad de reproducción',
             options=list(speed_options.keys()),
-            index=0
+            index=0,
+            key='speed_selector_3'
         )
     
     # Área para mostrar detecciones
