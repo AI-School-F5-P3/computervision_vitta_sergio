@@ -63,22 +63,59 @@ def load_model():
 model = load_model()
 
 # Función para procesar imagen
-def process_image(image):
+def process_image(image, detection_area):
     results = model(image, conf=0.25)
-    
-    # Obtenemos las predicciones
     boxes = results[0].boxes
     
-    # Mostramos información sobre las detecciones
-    if len(boxes) > 0:
-        st.write(f"Se encontraron {len(boxes)} logos:")
-        for box in boxes:
-            conf = float(box.conf[0])
-            cls = int(box.cls[0])
-            class_name = model.names[cls]
-            st.write(f"- {class_name} (confianza: {conf:.2%})")
+    detection_area.empty()
     
-    # Retornamos la imagen con todas las detecciones dibujadas
+    detections_info = []
+    for box in boxes:
+        conf = float(box.conf[0])
+        cls = int(box.cls[0])
+        class_name = model.names[cls]
+        detections_info.append((class_name, conf))
+    
+    if detections_info:
+        # Crear contenedor para todas las detecciones
+        with detection_area.container():
+            st.markdown(
+                """
+                <div style="text-align: center; margin-bottom: 10px;">
+                    Se encontraron {} logos:
+                </div>
+                """.format(len(detections_info)),
+                unsafe_allow_html=True
+            )
+            # Crear un box para cada detección
+            for class_name, conf in detections_info:
+                st.markdown(
+                    f"""
+                    <div style="
+                        background-color: #1A1C1F;
+                        padding: 8px 15px;
+                        border-radius: 5px;
+                        margin: 5px auto;
+                        color: #9BA1A6;
+                        text-align: center;
+                        width: 100%;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    ">
+                        {class_name} (confianza: {conf:.2%})
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+    else:
+        detection_area.markdown(
+            """
+            <div style="text-align: center; color: #9BA1A6;">
+                No se detectaron logos
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
     return results[0].plot()
 
 # Función para procesar video
@@ -330,6 +367,29 @@ st.markdown(
 # Crear tres columnas principales: izquierda (entrada), centro (visualización) y derecha (controles)
 left_column, center_column, right_column = st.columns([1, 2, 1])
 
+# Configuración en la columna derecha primero
+with right_column:
+    # Controles y configuración
+    st.subheader("Configuración")
+    
+    # Control de confianza
+    confidence = st.slider("Confidence Threshold:", 0, 100, 50, format="%d%%")
+    conf_threshold = confidence / 100
+    
+    # Control de superposición
+    overlap = st.slider("Overlap Threshold:", 0, 100, 50, format="%d%%")
+    
+    # Modo de visualización
+    display_mode = st.selectbox(
+        "Label Display Mode:",
+        ["Draw Confidence"]
+    )
+    
+    # Sección de Detecciones (siempre visible)
+    st.subheader("Detecciones")
+    detection_area = st.empty()
+
+# Ahora podemos usar detection_area en el resto del código
 with left_column:
     # Samples from Test Set
     st.subheader("Samples")
@@ -350,7 +410,7 @@ with left_column:
             file_path = os.path.join(samples_dir, selected_sample)
             if selected_sample.lower().endswith(('.jpg', '.jpeg', '.png')):
                 image = Image.open(file_path)
-                processed_image = process_image(image)
+                processed_image = process_image(image, detection_area)
                 with center_column:
                     st.image(processed_image, caption="Muestra procesada", use_container_width=True)
             elif selected_sample.lower().endswith(('.mp4', '.avi', '.mov')):
@@ -396,7 +456,8 @@ with left_column:
                                 detections_info.append(f"{class_name} ({conf:.2%})")
                             
                             if detections_info:
-                                detection_area.write("\n".join(detections_info))
+                                detection_area.write(f"Se encontraron {len(detections_info)} logos:")
+                                detection_area.write("\n".join([f"- {info}" for info in detections_info]))
                             else:
                                 detection_area.write("No se detectaron logos")
                             
@@ -444,8 +505,9 @@ with center_column:
     if uploaded_file is not None:
         if uploaded_file.type.startswith('image'):
             image = Image.open(uploaded_file)
-            processed_image = process_image(image)
-            st.image(processed_image, caption="Processed Image", use_container_width=True)
+            processed_image = process_image(image, detection_area)
+            with center_column:
+                st.image(processed_image, caption="Processed Image", use_container_width=True)
         else:
             # Área para mostrar detecciones
             detection_area = st.empty()
@@ -482,47 +544,12 @@ with center_column:
                 response = urllib.request.urlopen(url_input)
                 image_data = response.read()
                 image = Image.open(BytesIO(image_data))
-                processed_image = process_image(image)
+                processed_image = process_image(image, detection_area)
                 st.image(processed_image, caption="Processed Image", use_container_width=True)
             except:
                 st.error("Invalid URL or unable to process the image")
     elif st.session_state.run_webcam:
         process_webcam()
-
-with right_column:
-    # Controles y configuración
-    st.subheader("Configuración")
-    
-    # Control de confianza
-    confidence = st.slider("Confidence Threshold:", 0, 100, 50, format="%d%%")
-    conf_threshold = confidence / 100
-    
-    # Control de superposición
-    overlap = st.slider("Overlap Threshold:", 0, 100, 50, format="%d%%")
-    
-    # Modo de visualización
-    display_mode = st.selectbox(
-        "Label Display Mode:",
-        ["Draw Confidence"]
-    )
-    
-    # Si hay un video, mostrar control de velocidad
-    if 'video_processed' in st.session_state:
-        st.subheader("Control de Video")
-        speed_options = {
-            'Velocidad Normal (x1)': 1.0,
-            'Velocidad x3': 3.0,
-            'Velocidad x5': 5.0
-        }
-        selected_speed = st.selectbox(
-            'Velocidad de reproducción',
-            options=list(speed_options.keys()),
-            index=0
-        )
-    
-    # Área para mostrar detecciones
-    st.subheader("Detecciones")
-    detection_area = st.empty()
 
 # Información en el sidebar
 with st.sidebar:

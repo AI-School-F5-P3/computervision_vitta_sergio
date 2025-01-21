@@ -93,5 +93,5 @@ data/
 
 # Modelos entrenados
 modelos_entrenados/
-*.pt
+
 *.onnx
