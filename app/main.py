@@ -67,7 +67,9 @@ def process_image(image, detection_area):
     results = model(image, conf=0.25)
     boxes = results[0].boxes
     
-    detection_area.empty()
+    # Limpiamos el área de detecciones anterior
+    with detection_area:
+        st.empty()
     
     detections_info = []
     for box in boxes:
@@ -78,16 +80,7 @@ def process_image(image, detection_area):
     
     if detections_info:
         # Crear contenedor para todas las detecciones
-        with detection_area.container():
-            st.markdown(
-                """
-                <div style="text-align: center; margin-bottom: 10px;">
-                    Se encontraron {} logos:
-                </div>
-                """.format(len(detections_info)),
-                unsafe_allow_html=True
-            )
-            # Crear un box para cada detección
+        with detection_area:
             for class_name, conf in detections_info:
                 st.markdown(
                     f"""
@@ -107,14 +100,15 @@ def process_image(image, detection_area):
                     unsafe_allow_html=True
                 )
     else:
-        detection_area.markdown(
-            """
-            <div style="text-align: center; color: #9BA1A6;">
-                No se detectaron logos
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+        with detection_area:
+            st.markdown(
+                """
+                <div style="text-align: center; color: #9BA1A6;">
+                    No se detectaron logos
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
     
     return results[0].plot()
 
@@ -369,25 +363,10 @@ left_column, center_column, right_column = st.columns([1, 2, 1])
 
 # Configuración en la columna derecha primero
 with right_column:
-    # Controles y configuración
-    st.subheader("Configuración")
-    
-    # Control de confianza
-    confidence = st.slider("Confidence Threshold:", 0, 100, 50, format="%d%%")
-    conf_threshold = confidence / 100
-    
-    # Control de superposición
-    overlap = st.slider("Overlap Threshold:", 0, 100, 50, format="%d%%")
-    
-    # Modo de visualización
-    display_mode = st.selectbox(
-        "Label Display Mode:",
-        ["Draw Confidence"]
-    )
     
     # Sección de Detecciones (siempre visible)
     st.subheader("Detecciones")
-    detection_area = st.empty()
+    detection_area = st.container()  # Usamos container para mantener el título fijo
 
 # Ahora podemos usar detection_area en el resto del código
 with left_column:
@@ -429,6 +408,13 @@ with left_column:
                         key='speed_selector'
                     )
                     
+                    # Botón para detener el video
+                    if 'stop_video' not in st.session_state:
+                        st.session_state.stop_video = False
+                    
+                    if st.button('Detener Video'):
+                        st.session_state.stop_video = True
+                    
                     # Área para mostrar detecciones y video
                     detection_area = st.empty()
                     video_display = st.empty()
@@ -437,7 +423,7 @@ with left_column:
                     cap = cv2.VideoCapture(file_path)
                     
                     try:
-                        while cap.isOpened():
+                        while cap.isOpened() and not st.session_state.stop_video:
                             ret, frame = cap.read()
                             if not ret:
                                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # Reiniciar video al final
@@ -474,6 +460,7 @@ with left_column:
                         st.error(f"Error durante la reproducción: {str(e)}")
                     finally:
                         cap.release()
+                        st.session_state.stop_video = False  # Resetear el estado al finalizar
                 
         except Exception as e:
             st.error(f"Error procesando la muestra: {str(e)}")
@@ -557,9 +544,7 @@ with st.sidebar:
     st.markdown("""
     Este detector puede identificar los siguientes logos:
     - Adidas
-    - Reebok
     - Nike
     - Apple
-    - Sony
     - Samsung
     """)
