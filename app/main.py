@@ -61,7 +61,7 @@ def load_sample_images():
 # Función para cargar el modelo
 @st.cache_resource
 def load_model():
-    model = YOLO('best.pt')
+    model = YOLO('logo_model.pt')
     return model
 
 # Cargar el modelo
